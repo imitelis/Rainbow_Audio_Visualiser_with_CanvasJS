@@ -1,8 +1,10 @@
 const audioCtx = new AudioContext();
+let stream;
+let isMicActive = false;
 
 const container = document.getElementById('container');
 const canvas = document.getElementById('canvas');
-const file = document.getElementById('fileupload');
+const audioButton = document.getElementById('audio');
 
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
@@ -13,50 +15,64 @@ let audioSource;
 let analyser;
 
 container.addEventListener('click', function(){
-    const audio1 = document.getElementById('audio');
-    audio1.src = 'blessing.ogg';
-    audio1.play();
-
-    audioSource = audioCtx.createMediaElementSource(audio1);
-    analyser = audioCtx.createAnalyser();
-    
-    audioSource.connect(analyser);
-    analyser.connect(audioCtx.destination);
-    analyser.fftSize = 512;
-    
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
-    const barWidth = 10; // (canvas.width/2)/bufferLength;
-    let barHeight;
-    let x;
-
-    function animate(){
-        x = 0;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        analyser.getByteFrequencyData(dataArray);
-        drawVisualiser(bufferLength, x, barWidth, barHeight, dataArray);
-        requestAnimationFrame(animate);
+    if (!isMicActive) {
+        startMicrophone();
+    } else {
+        stopMicrophone();
     }
-
-    animate();
 });
 
-const microphone = new Microphone();
+function startMicrophone() {
+    navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(function(streamObj) {
+        stream = streamObj;
+        audioSource = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        
+        audioSource.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        analyser.fftSize = 512;
+        
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        const barWidth = 10;
+        let x = 0;
 
-function drawVisualiser(bufferLength, x, barWidth, barHeight, dataArray){
-    if (microphone.initialized) {
-        const samples = microphone.getSamples();
-        for (let i = 0; i < bufferLength; i++){
-            barHeight = samples[i] * 1.5; // dataArray[i] * 1.5;
-            ctx.save();
-            ctx.translate(canvas.width/2, canvas.height/2);
-            ctx.rotate(i * Math.PI * 6 / bufferLength);
-            const hue = i *  5;
-            ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-            ctx.fillRect(0, 0, barWidth, barHeight);
+        function animate(){
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            analyser.getByteFrequencyData(dataArray);
+            drawVisualiser(bufferLength, x, barWidth, dataArray);
             x += barWidth;
-            ctx.restore();
+            requestAnimationFrame(animate);
         }
+
+        animate();
+        isMicActive = true;
+        audioButton.style.backgroundColor = 'tomato';
+    })
+    .catch(function(err) {
+        console.error('Error accessing microphone:', err);
+    });
+}
+
+function stopMicrophone() {
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        isMicActive = false;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        audioButton.style.backgroundColor = 'dodgerblue';
+    }
+}
+
+function drawVisualiser(bufferLength, x, barWidth, dataArray){
+    for (let i = 0; i < bufferLength; i++){
+        const barHeight = dataArray[i] * 1.5; 
+        ctx.save();
+        ctx.translate(canvas.width/2, canvas.height/2);
+        ctx.rotate(i * Math.PI * 6 / bufferLength);
+        const hue = i *  5;
+        ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+        ctx.fillRect(0, 0, barWidth, barHeight);
+        ctx.restore();
     }
 }
